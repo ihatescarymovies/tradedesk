@@ -60,7 +60,7 @@ Visit `http://localhost:3000`.
 
 ## Environment Variables
 
-See `.env.example` for all required variables.
+See `.env.example` for the complete setup contract. Reminder templates use the canonical `reminder_templates` table; the migration safely renames the earlier singular table when upgrading an existing database. If both `reminder_template` and `reminder_templates` already exist, the migration stops before continuing: back up the database, deliberately reconcile/merge the two tables, then re-run the migration.
 
 | Variable | Description |
 |----------|-------------|
@@ -87,11 +87,14 @@ Cron jobs are configured in `vercel.json`:
 
 ### Database Migration
 
-After deploying, run the migration against your production database:
+After deploying, back up the database and run the migration:
 
 ```bash
-psql $DATABASE_URL < db/migration.sql
+pg_dump "$DATABASE_URL" > tradedesk-pre-migration.sql
+psql "$DATABASE_URL" < db/migration.sql
 ```
+
+The migration preserves the canonical `reminder_templates` name and upgrades a legacy-singular-only database by renaming `reminder_template`. If it reports that both `reminder_template` and `reminder_templates` exist, stop: back up the database, deliberately reconcile/merge the two tables (including dependent foreign keys and any duplicate/conflicting rows), then re-run `db/migration.sql`. It will not choose a table or discard data automatically.
 
 ## License
 

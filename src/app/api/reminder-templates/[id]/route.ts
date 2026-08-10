@@ -28,7 +28,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   updates.push('updated_at = NOW()');
 
   const result = await query(
-    `UPDATE reminder_template SET ${updates.join(', ')}
+    `UPDATE reminder_templates SET ${updates.join(', ')}
      WHERE id = $1 AND user_id = $${paramIdx}
      RETURNING *`,
     [id, ...values, session.userId]
@@ -46,7 +46,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
 
   const result = await query(
-    'DELETE FROM reminder_template WHERE id = $1 AND user_id = $2 RETURNING id',
+    'DELETE FROM reminder_templates WHERE id = $1 AND user_id = $2 RETURNING id',
     [id, session.userId]
   );
 

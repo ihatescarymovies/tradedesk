@@ -8,7 +8,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const templates = await query(
-    `SELECT * FROM reminder_template WHERE user_id = $1 ORDER BY days_before_due ASC`,
+    `SELECT * FROM reminder_templates WHERE user_id = $1 ORDER BY days_before_due ASC`,
     [session.userId]
   );
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await query(
-    `INSERT INTO reminder_template (user_id, name, subject, body, days_before_due, is_active)
+    `INSERT INTO reminder_templates (user_id, name, subject, body, days_before_due, is_active)
      VALUES ($1, $2, $3, $4, $5, true)
      RETURNING *`,
     [session.userId, name, subject, templateBody, days_before_due]

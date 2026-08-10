@@ -1,5 +1,7 @@
 -- TradeDesk Database Migration
 -- Run this against your PostgreSQL database to create all required tables.
+-- psql must stop on the explicit dual-table safety exception rather than continue.
+\set ON_ERROR_STOP on
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -190,7 +192,20 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 
 -- Reminder templates
-CREATE TABLE IF NOT EXISTS reminder_template (
+-- Canonical table name: reminder_templates (plural). A database containing both
+-- names is ambiguous: do not silently strand rows in the legacy table.
+DO $$
+BEGIN
+  IF to_regclass('public.reminder_templates') IS NOT NULL
+     AND to_regclass('public.reminder_template') IS NOT NULL THEN
+    RAISE EXCEPTION 'Reminder migration stopped: both public.reminder_template and public.reminder_templates exist. Back up and deliberately reconcile/merge the tables, then re-run db/migration.sql.';
+  ELSIF to_regclass('public.reminder_templates') IS NULL
+        AND to_regclass('public.reminder_template') IS NOT NULL THEN
+    ALTER TABLE reminder_template RENAME TO reminder_templates;
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS reminder_templates (
   id             TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name           TEXT NOT NULL,
