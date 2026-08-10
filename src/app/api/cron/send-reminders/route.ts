@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
      FROM invoices i
      JOIN customers c ON i.customer_id = c.id
      JOIN users u ON i.user_id = u.id
-     JOIN reminder_template t ON t.user_id = i.user_id
+     JOIN reminder_templates t ON t.user_id = i.user_id
      WHERE t.is_active = true
        AND i.status IN ('draft', 'sent')
        AND NOT EXISTS (
