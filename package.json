@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "verify:build": "bash scripts/verify-build.sh",
+    "verify:migration": "bash scripts/migration-regression.sh"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^3.3.0",

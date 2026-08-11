@@ -58,6 +58,41 @@ pnpm run dev
 
 Visit `http://localhost:3000`.
 
+## Local verification gates
+
+Two tracked scripts provide repeatable pre-merge gates. Run both from the repo root.
+
+### `pnpm run verify:build` — build health gate
+
+Verifies the **committed tree (HEAD)** in a clean disposable copy (uncommitted changes are not tested):
+
+1. `pnpm install --frozen-lockfile` — content store on root-backed storage; the pnpm *virtual* store stays inside the project (`node_modules/.pnpm`), which Next 16/Turbopack requires
+2. `pnpm exec tsc --noEmit`
+3. `pnpm run build`
+4. Landing-route smoke — `next start` on an ephemeral port, `GET /` must return `200`
+
+The working copy is created under `/tmp` (root-backed) via `git archive` and removed on exit, so the gate works even when `/home` is capacity-constrained. Environment overrides: `VERIFY_TMPDIR`, `PNPM_STORE_DIR` (default `/tmp/tradedesk-pnpm-store`, reused across runs to keep re-installs fast), `VERIFY_PORT`, `KEEP_WORK=1` (keep the copy/log for inspection).
+
+### `pnpm run verify:migration` — migration-contract regression gate
+
+Runs the **working-tree** `db/migration.sql` against disposable local PostgreSQL databases (dropped on exit) and asserts the reminder-template canonicalization contract:
+
+1. Fresh install completes under a non-default `search_path` and creates `public.reminder_templates`
+2. Strict custom-`search_path` (public absent) legacy upgrade completes — the contract restored by PR #2 (`f0a7b42`, qualify `reminders.template_id` FK as `public.reminder_templates`) — preserving the legacy row and FKs, with `reminders.template_id` referencing `public.reminder_templates`
+3. Canonical re-run is idempotent (rc=0, no duplicated rows)
+4. Dual-table state (both `reminder_template` and `reminder_templates` present) aborts with the explicit "both … exist" safety exception and strands no data
+
+Prerequisite: a local PostgreSQL server reachable as the postgres superuser via passwordless `sudo -u postgres`. Install/start on Ubuntu:
+
+```bash
+sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-client
+sudo pg_ctlcluster 16 main start
+```
+
+The script fails with these instructions if the tools or a live server are unavailable — it never installs anything (it will attempt a one-time cluster start if one is installed but down). Overrides: `MIGRATION_FILE`, `WORK_DIR`, `KEEP_WORK=1`.
+
+> **Out of scope for both gates:** the reminder-cron handler (`src/app/api/cron/send-reminders/route.ts`) inserts into `reminders` without the NOT NULL `user_id` column. That runtime defect is tracked separately and is not claimed fixed by these gates.
+
 ## Environment Variables
 
 See `.env.example` for the complete setup contract. Reminder templates use the canonical `reminder_templates` table; the migration safely renames the earlier singular table when upgrading an existing database. If both `reminder_template` and `reminder_templates` already exist, the migration stops before continuing: back up the database, deliberately reconcile/merge the two tables, then re-run the migration.
