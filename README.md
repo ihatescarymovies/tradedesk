@@ -75,7 +75,7 @@ The working copy is created under `/tmp` (root-backed) via `git archive` and rem
 
 ### `pnpm run verify:migration` — migration-contract regression gate
 
-Runs the **working-tree** `db/migration.sql` against disposable local PostgreSQL databases (dropped on exit) and asserts the reminder-template canonicalization contract:
+Runs the **working-tree** `db/migration.sql` against disposable local PostgreSQL databases (dropped on exit — only databases this run created are ever dropped; a pre-existing name aborts the run instead of being deleted) and asserts the reminder-template canonicalization contract:
 
 1. Fresh install completes under a non-default `search_path` and creates `public.reminder_templates`
 2. Strict custom-`search_path` (public absent) legacy upgrade completes — the contract restored by PR #2 (`f0a7b42`, qualify `reminders.template_id` FK as `public.reminder_templates`) — preserving the legacy row and FKs, with `reminders.template_id` referencing `public.reminder_templates`
@@ -89,7 +89,7 @@ sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y po
 sudo pg_ctlcluster 16 main start
 ```
 
-The script fails with these instructions if the tools or a live server are unavailable — it never installs anything (it will attempt a one-time cluster start if one is installed but down). Overrides: `MIGRATION_FILE`, `WORK_DIR`, `KEEP_WORK=1`.
+The script fails with these instructions if the tools or a live server are unavailable — it never installs anything (it will attempt a one-time cluster start if one is installed but down). Overrides: `MIGRATION_FILE`, `WORK_DIR` (base directory for scratch logs — a unique child scratch dir is created under it per run and removed on exit, so concurrent runs never share a dir and the base itself is never deleted), `KEEP_WORK=1`.
 
 > **Out of scope for both gates:** the reminder-cron handler (`src/app/api/cron/send-reminders/route.ts`) inserts into `reminders` without the NOT NULL `user_id` column. That runtime defect is tracked separately and is not claimed fixed by these gates.
 

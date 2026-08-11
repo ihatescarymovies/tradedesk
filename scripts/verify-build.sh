@@ -52,12 +52,14 @@ trap cleanup EXIT
 
 fail() { echo "verify: FAIL — $1" >&2; exit 1; }
 
-# http_code <url> — prints the HTTP status, or 000 if unreachable.
+# http_code <url> — prints the HTTP status, or 000 if unreachable. Each probe is
+# tightly bounded (curl connect/max time; Node AbortSignal timeout) so a server
+# that accepts connections but never responds cannot stall the readiness loop.
 http_code() {
   if command -v curl >/dev/null 2>&1; then
-    curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1" || echo 000
+    curl -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "$1" || echo 000
   else
-    node -e 'fetch(process.argv[1]).then(r=>{console.log(r.status)}).catch(()=>console.log("000"))' "$1"
+    node -e 'fetch(process.argv[1], { signal: AbortSignal.timeout(2000) }).then(r=>{console.log(r.status)}).catch(()=>console.log("000"))' "$1"
   fi
 }
 
@@ -104,9 +106,13 @@ NEXT_TELEMETRY_DISABLED=1 pnpm exec next start -p "$PORT" >"$WORK_DIR/server.log
 SERVER_PID=$!
 
 READY=0
-for _ in $(seq 1 60); do
+# Enforce one overall deadline: probes are bounded to ~2s each, and the loop
+# stops as soon as the deadline passes, so the gate cannot run past ~120s.
+DEADLINE=$(( $(date +%s) + 120 ))
+while :; do
   if [ "$(http_code "http://127.0.0.1:$PORT/")" = "200" ]; then READY=1; break; fi
-  sleep 2
+  if [ "$(date +%s)" -ge "$DEADLINE" ]; then break; fi
+  sleep 1
 done
 if [ "$READY" != "1" ]; then
   echo "verify: server log (tail):" >&2

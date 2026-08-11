@@ -35,8 +35,14 @@
 #
 # Environment overrides:
 #   MIGRATION_FILE  migration to test (default: <repo>/db/migration.sql, working tree)
-#   WORK_DIR        scratch dir for logs (default: ${TMPDIR:-/tmp}/tradedesk-migration-regression)
+#   WORK_DIR        BASE directory for scratch logs (default: ${TMPDIR:-/tmp}/tradedesk-migration-regression);
+#                   a unique child scratch dir is created under it per run, and only that child is removed
 #   KEEP_WORK=1     keep scratch logs and the disposable databases on exit for inspection
+#
+# Safety: this script never drops a database it did not create. Database names are
+# generated per run (timestamp+pid+random); if a name already exists, `createdb`
+# fails and the run aborts — nothing is dropped first. Cleanup drops only the
+# databases this invocation created and removes only its own scratch child dir.
 set -u
 
 # --- locate repo + migration -------------------------------------------------
@@ -45,9 +51,9 @@ REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || dirnam
 MIGRATION_FILE="${MIGRATION_FILE:-$REPO_ROOT/db/migration.sql}"
 [ -f "$MIGRATION_FILE" ] || { echo "regress: FAIL — migration not found at $MIGRATION_FILE (set MIGRATION_FILE)" >&2; exit 1; }
 
-WORK_DIR="${WORK_DIR:-${TMPDIR:-/tmp}/tradedesk-migration-regression}"
+WORK_BASE="${WORK_DIR:-${TMPDIR:-/tmp}/tradedesk-migration-regression}"
 KEEP_WORK="${KEEP_WORK:-0}"
-DB_PREFIX="tdreg_$$"          # unique per run so concurrent runs do not clash
+DB_PREFIX="tdreg_$(date +%s)_$$_$RANDOM"   # unique per run so concurrent runs do not clash
 FAILURES=0
 DB_NAMES=""
 
@@ -92,7 +98,9 @@ EOF
   fi
 fi
 
-mkdir -p "$WORK_DIR"
+mkdir -p "$WORK_BASE" || { echo "regress: FAIL — cannot create scratch base $WORK_BASE" >&2; exit 1; }
+WORK_DIR=$(mktemp -d "$WORK_BASE/tdreg.XXXXXX") || { echo "regress: FAIL — cannot create scratch dir under $WORK_BASE" >&2; exit 1; }
+echo "regress: scratch dir: $WORK_DIR"
 
 # --- helpers -------------------------------------------------------------------
 # run the migration as postgres under a custom search_path; echoes the exit code
@@ -102,9 +110,11 @@ run_migration() { # $1=db  $2=search_path  $3=outfile
 }
 # assert query as postgres with default search_path (fully-qualified SQL only)
 q() { sudo -u postgres psql -X -qAt -d "$1" -c "$2" 2>/dev/null; }
-mkdb() { # $1=db
-  sudo -u postgres dropdb --if-exists "$1" >/dev/null 2>&1
-  sudo -u postgres createdb "$1" || { fail "could not create database $1"; return 1; }
+mkdb() { # $1=db — createdb must succeed; a name that already exists aborts safely (never dropped)
+  if ! DBERR=$(sudo -u postgres createdb "$1" 2>&1); then
+    fail "could not create database $1 — name may already exist, refusing to drop it (createdb: $DBERR)"
+    return 1
+  fi
   DB_NAMES="$DB_NAMES $1"
 }
 cleanup() {
