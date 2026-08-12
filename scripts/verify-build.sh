@@ -110,6 +110,14 @@ READY=0
 # stops as soon as the deadline passes, so the gate cannot run past ~120s.
 DEADLINE=$(( $(date +%s) + 120 ))
 while :; do
+  # A 200 from anything on $PORT is not proof: if next start died (e.g.
+  # EADDRINUSE on an occupied port), an unrelated listener could answer and
+  # produce a false pass. Verify the server process is still alive first.
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "verify: next start process ($SERVER_PID) exited unexpectedly" >&2
+    tail -20 "$WORK_DIR/server.log" >&2 || true
+    fail "landing route smoke failed — next start exited before readiness (log: $WORK_DIR/server.log; re-run with KEEP_WORK=1 to keep it)"
+  fi
   if [ "$(http_code "http://127.0.0.1:$PORT/")" = "200" ]; then READY=1; break; fi
   if [ "$(date +%s)" -ge "$DEADLINE" ]; then break; fi
   sleep 1
