@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
 const COOKIE_NAME = 'td_session';
-const PUBLIC_PATHS = ['/', '/login', '/signup', '/pricing', '/api/auth/magic-link', '/api/auth/verify'];
+// Paths reachable without a session cookie. Auth routes self-authenticate
+// (password/magic-link), cron routes use Bearer CRON_SECRET, and /pay +
+// /api/stripe/invoice-checkout serve the public invoice payment journey.
+const PUBLIC_PATHS = [
+  '/',
+  '/login',
+  '/signup',
+  '/pricing',
+  '/pay',
+  '/api/auth',
+  '/api/cron',
+  '/api/stripe/invoice-checkout',
+  '/api/webhooks',
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
