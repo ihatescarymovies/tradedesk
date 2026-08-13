@@ -6,8 +6,8 @@ interface ReminderRow {
   invoice_id: string;
   invoice_number: string;
   total: string;
-  due_date: string;
-  issue_date: string;
+  due_date: Date | string | null;
+  issue_date: Date | string | null;
   user_id: string;
   customer_name: string;
   customer_email: string;
@@ -16,6 +16,13 @@ interface ReminderRow {
   body: string;
   template_name: string;
   user_email: string;
+}
+
+// pg parses DATE columns as Date objects; normalize to YYYY-MM-DD for templates.
+function fmtDate(d: Date | string | null): string {
+  if (!d) return '';
+  if (d instanceof Date) return d.toISOString().split('T')[0];
+  return String(d).split('T')[0];
 }
 
 export async function GET(req: NextRequest) {
@@ -50,31 +57,32 @@ export async function GET(req: NextRequest) {
       .replace('{invoice_number}', r.invoice_number)
       .replace('{customer_name}', r.customer_name)
       .replace('{total}', `$${Number(r.total).toFixed(2)}`)
-      .replace('{due_date}', r.due_date?.split('T')[0])
-      .replace('{issue_date}', r.issue_date?.split('T')[0]);
+      .replace('{due_date}', fmtDate(r.due_date))
+      .replace('{issue_date}', fmtDate(r.issue_date));
 
     const emailBody = r.body
       .replace('{invoice_number}', r.invoice_number)
       .replace('{customer_name}', r.customer_name)
       .replace('{total}', `$${Number(r.total).toFixed(2)}`)
-      .replace('{due_date}', r.due_date?.split('T')[0])
-      .replace('{issue_date}', r.issue_date?.split('T')[0]);
+      .replace('{due_date}', fmtDate(r.due_date))
+      .replace('{issue_date}', fmtDate(r.issue_date));
 
     try {
-      await sendEmail({ to: r.customer_email, subject: emailSubject, html: emailBody });
+      const emailResult = await sendEmail({ to: r.customer_email, subject: emailSubject, html: emailBody });
+      if (emailResult?.error) throw new Error(emailResult.error.message || 'Failed to send reminder email');
 
       await query(
-        `INSERT INTO reminders (invoice_id, template_id, reminder_date, status)
-         VALUES ($1, $2, NOW(), 'sent')`,
-        [r.invoice_id, r.template_id]
+        `INSERT INTO reminders (user_id, invoice_id, template_id, reminder_date, status)
+         VALUES ($1, $2, $3, NOW(), 'sent')`,
+        [r.user_id, r.invoice_id, r.template_id]
       );
 
       sent++;
     } catch (err) {
       await query(
-        `INSERT INTO reminders (invoice_id, template_id, reminder_date, status)
-         VALUES ($1, $2, NOW(), 'failed')`,
-        [r.invoice_id, r.template_id]
+        `INSERT INTO reminders (user_id, invoice_id, template_id, reminder_date, status)
+         VALUES ($1, $2, $3, NOW(), 'failed')`,
+        [r.user_id, r.invoice_id, r.template_id]
       );
       console.error('Failed to send reminder:', err);
     }
