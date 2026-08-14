@@ -52,6 +52,6 @@ export async function POST(req: NextRequest) {
   // Send welcome email (fire-and-forget)
   sendEmail({ to: email, subject: 'Welcome to TradeDesk!', html: welcomeEmail(name) }).catch(() => {});
 
-  const token = signToken({ userId: id, email });
+  const token = await signToken({ userId: id, email });
   return NextResponse.json({ token, user: { id, email, name }, referralCode: myCode });
 }
